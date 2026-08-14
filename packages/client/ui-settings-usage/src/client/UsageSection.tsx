@@ -202,7 +202,9 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
       return { series: buckets, cells: gridCells, columns: null }
     }
     const startWeekday = days.length > 0 ? new Date(`${days[0]?.date ?? ''}T00:00:00`).getDay() : 0
-    const padded: Array<UsageDay | null> = [...Array<null>(startWeekday).fill(null), ...days]
+    // Exactly 26 weeks × 7 days: padding trimmed to the grid, so the CSS grid
+    // never creates an implicit extra column that overflows the container.
+    const padded: Array<UsageDay | null> = [...Array<null>(startWeekday).fill(null), ...days].slice(0, 182)
     const gridCells: GridCell[] = padded.map((day, index) =>
       day === null ? { key: `pad-${index}`, date: '', bucket: null } : { key: day.date, date: day.date, bucket: day },
     )
@@ -280,16 +282,7 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
       </div>
 
       <div>
-        <div className={styles.sectionHead}>
-          <div className={styles.sectionTitle}>{gridLabel}</div>
-          <div className={styles.legend}>
-            <span>{t('less')}</span>
-            {LEVEL_STOPS.map((_, level) => (
-              <span key={level} className={styles.legendCell} style={{ background: heatColor(level) }} />
-            ))}
-            <span>{t('more')}</span>
-          </div>
-        </div>
+        <div className={styles.sectionTitle}>{gridLabel}</div>
         <div className={styles.calendar}>
           {columns !== null && (
             <div className={styles.monthRow}>
@@ -351,6 +344,15 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
                 })}
               </div>
             )}
+          </div>
+          <div className={styles.calendarFooter}>
+            <div className={styles.legend}>
+              <span>{t('less')}</span>
+              {LEVEL_STOPS.map((_, level) => (
+                <span key={level} className={styles.legendCell} style={{ background: heatColor(level) }} />
+              ))}
+              <span>{t('more')}</span>
+            </div>
           </div>
         </div>
       </div>

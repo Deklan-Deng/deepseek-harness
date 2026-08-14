@@ -91,13 +91,6 @@
 }
 
 /* ---- section headings + legend ---- */
-.sectionHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .sectionTitle {
   font-size: 11px;
   line-height: 1.4;
@@ -105,8 +98,10 @@
   margin-bottom: 8px;
 }
 
-.sectionHead .sectionTitle {
-  margin-bottom: 0;
+.calendarFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
 }
 
 .legend {
