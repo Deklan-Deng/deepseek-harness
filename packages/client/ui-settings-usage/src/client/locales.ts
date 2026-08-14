@@ -10,6 +10,8 @@ export type UsageKey =
   | 'cacheRead'
   | 'gridTitle'
   | 'barsTitle'
+  | 'less'
+  | 'more'
   | 'unavailable'
   | 'empty'
 
@@ -25,6 +27,8 @@ export const zh: Record<UsageKey, string> = {
   cacheRead: '缓存读',
   gridTitle: '过去 26 周',
   barsTitle: '最近 30 天',
+  less: '少',
+  more: '多',
   unavailable: '用量面板仅在 Dcode 桌面端可用。',
   empty: '暂无用量数据，开始使用后这里会显示统计。',
 }
@@ -41,6 +45,8 @@ export const en: Record<UsageKey, string> = {
   cacheRead: 'Cache read',
   gridTitle: 'Last 26 weeks',
   barsTitle: 'Last 30 days',
+  less: 'Less',
+  more: 'More',
   unavailable: 'Usage is available in the Dcode desktop app only.',
   empty: 'No usage yet — statistics will appear once you start working.',
 }

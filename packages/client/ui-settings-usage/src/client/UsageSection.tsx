@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { UsageKey } from './locales.ts'
+import styles from './UsageSection.module.css'
 
 /** The desktop shell's usage bridge (Dcode main process). */
 interface DshDesktopBridge {
@@ -38,7 +38,11 @@ export interface UsageSectionInjected {
   t: (key: UsageKey) => string
 }
 
-const CELL_COLORS = ['#1c2431', '#1d3a8a', '#2a54c9', '#4d6bfe', '#8fa8ff'] as const
+/** Heat levels over the DeepSeek brand blue, following the theme token. */
+const LEVEL_STOPS = [0, 0.25, 0.45, 0.7, 1]
+
+const heatColor = (level: number): string =>
+  `color-mix(in srgb, var(--dsw-static-deepseek-450) ${(LEVEL_STOPS[level] ?? 0) * 100}%, transparent)`
 
 const fmt = (n: number): string => {
   if (!Number.isFinite(n) || n <= 0) return '0'
@@ -48,17 +52,16 @@ const fmt = (n: number): string => {
   return String(Math.round(n))
 }
 
-const cellColor = (value: number, max: number): string => {
-  if (value <= 0) return CELL_COLORS[0]
-  const level = Math.min(4, 1 + Math.floor((value / Math.max(max, 1)) * 4))
-  return CELL_COLORS[level] ?? CELL_COLORS[0]
+const levelOf = (value: number, max: number): number => {
+  if (value <= 0) return 0
+  return Math.min(4, 1 + Math.floor((value / Math.max(max, 1)) * 4))
 }
 
 const card = (label: string, bucket: UsageBucket, t: (key: UsageKey) => string): ReactNode => (
-  <div key={label} style={styles.card}>
-    <div style={styles.cardLabel}>{label}</div>
-    <div style={styles.cardValue}>{fmt(bucket.total)}</div>
-    <div style={styles.cardSub}>
+  <div key={label} className={styles.card}>
+    <div className={styles.cardLabel}>{label}</div>
+    <div className={styles.cardValue}>{fmt(bucket.total)}</div>
+    <div className={styles.cardSub}>
       {`${t('input')} ${fmt(bucket.input)} · ${t('output')} ${fmt(bucket.output)}${bucket.cacheRead > 0 ? ` · ${t('cacheRead')} ${fmt(bucket.cacheRead)}` : ''}`}
     </div>
   </div>
@@ -66,8 +69,10 @@ const card = (label: string, bucket: UsageBucket, t: (key: UsageKey) => string):
 
 /**
  * Token-usage settings page: GitHub-style daily grid plus day/week/month/
- * total cards and a 30-day bar chart. Data comes from the desktop shell's
- * usage bridge; in a plain web build the section renders an unavailable note.
+ * total cards and a 30-day bar chart. Styled with the shared design-platform
+ * tokens so it sits naturally inside the settings shell. Data comes from the
+ * desktop shell's usage bridge; in a plain web build the section renders an
+ * unavailable note.
  */
 export function UsageSection({ t }: UsageSectionInjected): ReactNode {
   const [data, setData] = useState<UsageSnapshot | null>(null)
@@ -98,7 +103,7 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
     return () => clearInterval(timer)
   }, [load])
 
-  if (state === 'unavailable') return <div style={styles.note}>{t('unavailable')}</div>
+  if (state === 'unavailable') return <div className={styles.note}>{t('unavailable')}</div>
 
   const cards = [
     [t('today'), data?.today],
@@ -117,82 +122,69 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
   const barWidth = 100 / Math.max(bars.length, 1)
 
   return (
-    <div style={styles.root}>
-      <div style={styles.title}>{t('title')}</div>
-      <div style={styles.cards}>
+    <div className={styles.root}>
+      <div className={styles.header}>
+        <div className={styles.title}>{t('title')}</div>
+        <div className={styles.legend}>
+          <span>{t('less')}</span>
+          {LEVEL_STOPS.map((_, level) => (
+            <span key={level} className={styles.legendCell} style={{ background: heatColor(level) }} />
+          ))}
+          <span>{t('more')}</span>
+        </div>
+      </div>
+
+      <div className={styles.cards}>
         {cards.map(([label, bucket]) => (bucket === undefined ? null : card(label, bucket, t)))}
       </div>
-      <div style={styles.sectionTitle}>{t('gridTitle')}</div>
-      <div style={styles.grid}>
-        {cells.map((day, index) =>
-          day === null ? (
-            <span key={`pad-${index}`} style={{ ...styles.cell, opacity: 0 }} />
-          ) : (
-            <span
-              key={day.date}
-              style={{ ...styles.cell, background: cellColor(day.total, maxTotal) }}
-              title={`${day.date} · ${fmt(day.total)} tokens`}
-            />
-          ),
-        )}
+
+      <div>
+        <div className={styles.sectionTitle}>{t('gridTitle')}</div>
+        <div className={styles.grid}>
+          {cells.map((day, index) =>
+            day === null ? (
+              <span key={`pad-${index}`} className={styles.cell} style={{ opacity: 0 }} />
+            ) : (
+              <span
+                key={day.date}
+                className={styles.cell}
+                style={{ background: heatColor(levelOf(day.total, maxTotal)) }}
+                title={`${day.date} · ${fmt(day.total)} tokens`}
+              />
+            ),
+          )}
+        </div>
       </div>
-      <div style={styles.sectionTitle}>{t('barsTitle')}</div>
-      <svg viewBox="0 0 100 88" preserveAspectRatio="none" style={styles.bars}>
-        {bars.map((day, index) => {
-          const h = barMax > 0 ? Math.max(2, (day.total / barMax) * 78) : 2
-          return (
-            <rect
-              key={day.date}
-              x={index * barWidth + barWidth * 0.22}
-              y={88 - h}
-              width={barWidth * 0.56}
-              height={h}
-              rx={1.5}
-              fill={day.total > 0 ? '#4d6bfe' : '#1c2431'}
-            >
-              <title>{`${day.date} · ${fmt(day.total)} tokens`}</title>
-            </rect>
-          )
-        })}
-      </svg>
-      {maxTotal === 0 ? <div style={styles.note}>{t('empty')}</div> : null}
+
+      <div>
+        <div className={styles.sectionTitle}>{t('barsTitle')}</div>
+        <div className={styles.barsWrap}>
+          <svg viewBox="0 0 100 88" preserveAspectRatio="none" className={styles.bars}>
+            {bars.map((day, index) => {
+              const h = barMax > 0 ? Math.max(2, (day.total / barMax) * 78) : 2
+              const barStyle: CSSProperties =
+                day.total > 0
+                  ? { fill: 'var(--dsw-static-deepseek-450)' }
+                  : { fill: 'var(--dsw-alias-bg-layer-3)' }
+              return (
+                <rect
+                  key={day.date}
+                  x={index * barWidth + barWidth * 0.22}
+                  y={88 - h}
+                  width={barWidth * 0.56}
+                  height={h}
+                  rx={1.5}
+                  style={barStyle}
+                >
+                  <title>{`${day.date} · ${fmt(day.total)} tokens`}</title>
+                </rect>
+              )
+            })}
+          </svg>
+        </div>
+      </div>
+
+      {maxTotal === 0 ? <div className={styles.note}>{t('empty')}</div> : null}
     </div>
   )
-}
-
-const styles: Record<string, CSSProperties> = {
-  root: {
-    color: '#c9d4e3',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    fontSize: 12,
-  },
-  title: { fontSize: 13, fontWeight: 600, color: '#e6ecf7', marginBottom: 12 },
-  cards: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 10,
-    marginBottom: 14,
-  },
-  card: {
-    background: '#161b22',
-    border: '1px solid #232c3f',
-    borderRadius: 8,
-    padding: '10px 12px',
-  },
-  cardLabel: { fontSize: 11, color: '#7d8aa0', marginBottom: 4 },
-  cardValue: { fontSize: 15, fontWeight: 650, color: '#e6ecf7' },
-  cardSub: { fontSize: 10, color: '#5d6b85', marginTop: 3 },
-  sectionTitle: { fontSize: 11, color: '#7d8aa0', margin: '12px 0 8px' },
-  grid: {
-    display: 'grid',
-    gridAutoFlow: 'column',
-    gridTemplateRows: 'repeat(7, 11px)',
-    gap: 3,
-    width: 'max-content',
-    maxWidth: '100%',
-    overflow: 'hidden',
-  },
-  cell: { width: 11, height: 11, borderRadius: 3, background: '#1c2431' },
-  bars: { display: 'block', width: '100%', height: 90 },
-  note: { color: '#7d8aa0', fontSize: 12, marginTop: 8 },
 }
