@@ -137,6 +137,10 @@ const periodTitle = (dim: Dim, date: string, t: (key: UsageKey) => string): stri
 const monthShort = (date: string): string =>
   new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(`${date}T00:00:00`))
 
+/** Compact axis label: MM-DD for days/weeks, YY-MM for months. */
+const axisDate = (dim: Dim, date: string): string =>
+  dim === 'month' ? date.slice(2, 7) : date.slice(5)
+
 const card = (label: string, bucket: UsageBucket, t: (key: UsageKey) => string): ReactNode => (
   <div key={label} className={styles.card}>
     <div className={styles.cardLabel}>{label}</div>
@@ -383,6 +387,23 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
               )
             })}
           </svg>
+          <div className={styles.barsAxis}>
+            {bars.map((bucket, index) => {
+              const show = index % 5 === 0 || index === bars.length - 1
+              return (
+                <span
+                  key={bucket.date}
+                  className={styles.axisLabel}
+                  style={{
+                    left: `${(index + 0.5) * barWidth}%`,
+                    transform: index === 0 ? 'none' : 'translateX(-50%)',
+                  }}
+                >
+                  {show ? axisDate(dim, bucket.date) : ''}
+                </span>
+              )
+            })}
+          </div>
         </div>
       </div>
 

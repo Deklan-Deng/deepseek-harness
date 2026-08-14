@@ -212,6 +212,22 @@
   height: 88px;
 }
 
+.barsAxis {
+  position: relative;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.axisLabel {
+  position: absolute;
+  top: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .bars rect {
   transform-box: fill-box;
   transform-origin: bottom;
