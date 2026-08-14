@@ -10,6 +10,14 @@ export type UsageKey =
   | 'cacheRead'
   | 'gridTitle'
   | 'barsTitle'
+  | 'daily'
+  | 'weekly'
+  | 'monthly'
+  | 'weeklyGrid'
+  | 'monthlyGrid'
+  | 'weeklyBars'
+  | 'monthlyBars'
+  | 'weekdayLabels'
   | 'less'
   | 'more'
   | 'unavailable'
@@ -27,6 +35,14 @@ export const zh: Record<UsageKey, string> = {
   cacheRead: '缓存读',
   gridTitle: '过去 26 周',
   barsTitle: '最近 30 天',
+  daily: '日',
+  weekly: '周',
+  monthly: '月',
+  weeklyGrid: '按周',
+  monthlyGrid: '按月',
+  weeklyBars: '每周用量',
+  monthlyBars: '每月用量',
+  weekdayLabels: '一 三 五',
   less: '少',
   more: '多',
   unavailable: '用量面板仅在 Dcode 桌面端可用。',
@@ -45,6 +61,14 @@ export const en: Record<UsageKey, string> = {
   cacheRead: 'Cache read',
   gridTitle: 'Last 26 weeks',
   barsTitle: 'Last 30 days',
+  daily: 'Day',
+  weekly: 'Week',
+  monthly: 'Month',
+  weeklyGrid: 'By week',
+  monthlyGrid: 'By month',
+  weeklyBars: 'Weekly',
+  monthlyBars: 'Monthly',
+  weekdayLabels: 'M W F',
   less: 'Less',
   more: 'More',
   unavailable: 'Usage is available in the Dcode desktop app only.',
