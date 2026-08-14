@@ -1,7 +1,9 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -64,7 +66,9 @@ interface TooltipState {
 const LEVEL_STOPS = [0, 0.25, 0.45, 0.7, 1] as const
 
 const heatColor = (level: number): string =>
-  `color-mix(in srgb, var(--dsw-static-deepseek-450) ${(LEVEL_STOPS[level] ?? 0) * 100}%, transparent)`
+  level === 0
+    ? 'var(--dsw-alias-bg-layer-3)'
+    : `color-mix(in srgb, var(--dsw-static-deepseek-450) ${(LEVEL_STOPS[level] ?? 0) * 100}%, var(--dsw-alias-bg-layer-3))`
 
 const fmt = (n: number): string => {
   if (!Number.isFinite(n) || n <= 0) return '0'
@@ -79,67 +83,68 @@ const levelOf = (value: number, max: number): number => {
   return Math.min(4, 1 + Math.floor((value / Math.max(max, 1)) * 4))
 }
 
-const pad2 = (n: number): string => String(n).padStart(2, '0')
+/** Gap between the cursor and the tooltip, in px (each axis). */
+const TIP_GAP = 14
 
-/** Monday of the week containing the given YYYY-MM-DD date. */
-const mondayOf = (date: string): string => {
-  const d = new Date(`${date}T00:00:00`)
-  const offset = (d.getDay() + 6) % 7
-  d.setDate(d.getDate() - offset)
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-}
+/**
+ * Hover tooltip with viewport-aware placement. Renders at `position: fixed`,
+ * measures its own box, then flips across the cursor and clamps into the
+ * viewport so a cell on the calendar's right edge (or a bar on the chart's
+ * last column) still shows fully instead of spilling past the window edge.
+ */
+function UsageTooltip(props: { tip: TooltipState; t: (key: UsageKey) => string }): ReactNode {
+  const { tip, t } = props
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ left: number; top: number }>({ left: tip.x, top: tip.y })
 
-const add = (target: UsageBucket, source: UsageBucket): void => {
-  target.input += source.input
-  target.output += source.output
-  target.cacheRead += source.cacheRead
-  target.cacheWrite += source.cacheWrite
-  target.total += source.total
-}
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el === null) return
+    const width = el.offsetWidth
+    const height = el.offsetHeight
+    const vw = window.innerWidth
+    const vh = window.innerHeight
 
-const aggregateWeekly = (days: UsageDay[]): UsageDay[] => {
-  const weeks = new Map<string, UsageDay>()
-  for (const day of days) {
-    const monday = mondayOf(day.date)
-    const bucket = weeks.get(monday)
-    if (bucket === undefined) {
-      weeks.set(monday, { ...day, date: monday })
-    } else {
-      add(bucket, day)
-    }
-  }
-  return [...weeks.values()]
-}
+    // Prefer right-below the cursor; flip to left when it would overflow, and
+    // flip above when the bottom edge would overflow. Final clamp keeps it
+    // always fully on-screen.
+    let left = tip.x + TIP_GAP
+    if (left + width > vw - 4) left = tip.x - width - TIP_GAP
+    let top = tip.y + TIP_GAP
+    if (top + height > vh - 4) top = tip.y - height - TIP_GAP
+    left = Math.min(Math.max(4, left), vw - width - 4)
+    top = Math.min(Math.max(4, top), vh - height - 4)
+    setPos({ left, top })
+  }, [tip])
 
-const aggregateMonthly = (days: UsageDay[]): UsageDay[] => {
-  const months = new Map<string, UsageDay>()
-  for (const day of days) {
-    const key = day.date.slice(0, 7)
-    const bucket = months.get(key)
-    if (bucket === undefined) {
-      months.set(key, { ...day, date: key })
-    } else {
-      add(bucket, day)
-    }
-  }
-  return [...months.values()]
-}
-
-const periodTitle = (dim: Dim, date: string, t: (key: UsageKey) => string): string => {
-  if (dim === 'month') {
-    const [year, month] = date.split('-')
-    return `${t('monthly')} ${year}-${month}`
-  }
-  if (dim === 'week') return `${t('weekly')} ${date}`
-  return date
+  return (
+    <div ref={ref} className={styles.tooltip} style={{ left: pos.left, top: pos.top }}>
+      <div className={styles.tooltipTitle}>{tip.title}</div>
+      <div className={styles.tooltipRow}>
+        <span>{t('input')}</span>
+        <b>{fmt(tip.bucket.input)}</b>
+      </div>
+      <div className={styles.tooltipRow}>
+        <span>{t('output')}</span>
+        <b>{fmt(tip.bucket.output)}</b>
+      </div>
+      <div className={styles.tooltipRow}>
+        <span>{t('cacheRead')}</span>
+        <b>{fmt(tip.bucket.cacheRead)}</b>
+      </div>
+      <div className={`${styles.tooltipRow} ${styles.tooltipTotal}`}>
+        <span>{t('total')}</span>
+        <b>{fmt(tip.bucket.total)}</b>
+      </div>
+    </div>
+  )
 }
 
 const monthShort = (date: string): string =>
   new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(`${date}T00:00:00`))
 
-/** Compact axis label: MM-DD for days/weeks, YY-MM for months. */
-const axisDate = (dim: Dim, date: string): string =>
-  dim === 'month' ? date.slice(2, 7) : date.slice(5)
+/** Compact axis label: MM-DD for days. */
+const axisDate = (_dim: Dim, date: string): string => date.slice(5)
 
 const card = (label: string, bucket: UsageBucket, t: (key: UsageKey) => string): ReactNode => (
   <div key={label} className={styles.card}>
@@ -161,7 +166,6 @@ const card = (label: string, bucket: UsageBucket, t: (key: UsageKey) => string):
 export function UsageSection({ t }: UsageSectionInjected): ReactNode {
   const [data, setData] = useState<UsageSnapshot | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
-  const [dim, setDim] = useState<Dim>('day')
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
 
   const load = useCallback(() => {
@@ -191,16 +195,6 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
 
   const { series, cells, columns } = useMemo(() => {
     const days = data?.days ?? []
-    if (dim === 'week') {
-      const buckets = aggregateWeekly(days)
-      const gridCells: GridCell[] = buckets.map(bucket => ({ key: bucket.date, date: bucket.date, bucket }))
-      return { series: buckets, cells: gridCells, columns: null }
-    }
-    if (dim === 'month') {
-      const buckets = aggregateMonthly(days)
-      const gridCells: GridCell[] = buckets.map(bucket => ({ key: bucket.date, date: bucket.date, bucket }))
-      return { series: buckets, cells: gridCells, columns: null }
-    }
     const startWeekday = days.length > 0 ? new Date(`${days[0]?.date ?? ''}T00:00:00`).getDay() : 0
     // Exactly 26 weeks × 7 days: padding trimmed to the grid, so the CSS grid
     // never creates an implicit extra column that overflows the container.
@@ -211,7 +205,7 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
     const weekColumns: GridCell[][] = []
     for (let i = 0; i < gridCells.length; i += 7) weekColumns.push(gridCells.slice(i, i + 7))
     return { series: days.slice(-30), cells: gridCells, columns: weekColumns }
-  }, [data, dim])
+  }, [data])
 
   const cellsMax = cells.reduce((max, cell) => Math.max(max, cell.bucket?.total ?? 0), 0)
   const barMax = series.reduce((max, bucket) => Math.max(max, bucket.total), 0)
@@ -233,12 +227,6 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
     [t('total'), data?.total],
   ] as Array<[string, UsageBucket | undefined]>
 
-  const dims: Array<[Dim, string]> = [
-    ['day', t('daily')],
-    ['week', t('weekly')],
-    ['month', t('monthly')],
-  ]
-
   const weekdayLabels = t('weekdayLabels').split(' ')
   const weekdayRows = [1, 3, 5]
 
@@ -253,97 +241,51 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
     }
   }
 
-  const gridLabel = dim === 'day' ? t('gridTitle') : dim === 'week' ? t('weeklyGrid') : t('monthlyGrid')
-  const barsLabel = dim === 'day' ? t('barsTitle') : dim === 'week' ? t('weeklyBars') : t('monthlyBars')
-
   const bars = series
   const barWidth = 100 / Math.max(bars.length, 1)
 
   return (
     <div className={styles.root}>
-      <div className={styles.header}>
-        <div className={styles.title}>{t('title')}</div>
-        <div className={styles.tabs}>
-          {dims.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={dim === value ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-              onClick={() => setDim(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className={styles.title}>{t('title')}</div>
 
       <div className={styles.cards}>
         {cards.map(([label, bucket]) => (bucket === undefined ? null : card(label, bucket, t)))}
       </div>
 
       <div>
-        <div className={styles.sectionTitle}>{gridLabel}</div>
+        <div className={styles.sectionTitle}>{t('gridTitle')}</div>
         <div className={styles.calendar}>
-          {columns !== null && (
-            <div className={styles.monthRow}>
-              {monthLabels.map((label, index) => (
-                <div key={index} className={styles.monthLabel}>
-                  {label}
-                </div>
+          <div className={styles.monthRow}>
+            {monthLabels.map((label, index) => (
+              <div key={index} className={styles.monthLabel}>
+                {label}
+              </div>
+            ))}
+          </div>
+          <div className={styles.gridBody}>
+            <div className={styles.weekdayCol}>
+              {weekdayRows.map(row => (
+                <span key={row} style={{ gridRowStart: row }}>
+                  {weekdayLabels[(row - 1) / 2]}
+                </span>
               ))}
             </div>
-          )}
-          <div className={styles.gridBody}>
-            {columns !== null && (
-              <div className={styles.weekdayCol}>
-                {weekdayRows.map(row => (
-                  <span key={row} style={{ gridRowStart: row }}>
-                    {weekdayLabels[(row - 1) / 2]}
-                  </span>
-                ))}
-              </div>
-            )}
-            {columns !== null ? (
-              <div className={styles.gridDay}>
-                {cells.map((cell) => {
-                  const bucket = cell.bucket
-                  if (bucket === null) return <span key={cell.key} className={styles.cell} style={{ opacity: 0 }} />
-                  return (
-                    <span
-                      key={cell.key}
-                      className={styles.cell}
-                      style={{ background: heatColor(levelOf(bucket.total, cellsMax)) }}
-                      onMouseEnter={event => showTip(event, periodTitle('day', cell.date, t), bucket)}
-                      onMouseMove={moveTip}
-                      onMouseLeave={hideTip}
-                    />
-                  )
-                })}
-              </div>
-            ) : (
-              <div
-                className={styles.gridFlat}
-                style={{
-                  aspectRatio: `${Math.max(cells.length, 1)} / 1`,
-                  gridTemplateColumns: `repeat(${Math.max(cells.length, 1)}, 1fr)`,
-                }}
-              >
-                {cells.map((cell) => {
-                  const bucket = cell.bucket
-                  if (bucket === null) return <span key={cell.key} className={styles.cell} style={{ opacity: 0 }} />
-                  return (
-                    <span
-                      key={cell.key}
-                      className={styles.cell}
-                      style={{ background: heatColor(levelOf(bucket.total, cellsMax)) }}
-                      onMouseEnter={event => showTip(event, periodTitle(dim, cell.date, t), bucket)}
-                      onMouseMove={moveTip}
-                      onMouseLeave={hideTip}
-                    />
-                  )
-                })}
-              </div>
-            )}
+            <div className={styles.gridDay}>
+              {cells.map((cell) => {
+                const bucket = cell.bucket
+                if (bucket === null) return <span key={cell.key} className={styles.cell} />
+                return (
+                  <span
+                    key={cell.key}
+                    className={styles.cell}
+                    style={{ background: heatColor(levelOf(bucket.total, cellsMax)) }}
+                    onMouseEnter={event => showTip(event, cell.date, bucket)}
+                    onMouseMove={moveTip}
+                    onMouseLeave={hideTip}
+                  />
+                )
+              })}
+            </div>
           </div>
           <div className={styles.calendarFooter}>
             <div className={styles.legend}>
@@ -358,7 +300,7 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
       </div>
 
       <div>
-        <div className={styles.sectionTitle}>{barsLabel}</div>
+        <div className={styles.sectionTitle}>{t('barsTitle')}</div>
         <div className={styles.barsWrap}>
           <svg viewBox="0 0 100 88" preserveAspectRatio="none" className={styles.bars}>
             <defs>
@@ -382,7 +324,7 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
                   height={h}
                   rx={1.5}
                   style={{ ...fill, animationDelay: `${index * 18}ms` }}
-                  onMouseEnter={event => showTip(event, periodTitle(dim, bucket.date, t), bucket)}
+                  onMouseEnter={event => showTip(event, bucket.date, bucket)}
                   onMouseMove={moveTip}
                   onMouseLeave={hideTip}
                 />
@@ -401,7 +343,7 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
                     transform: index === 0 ? 'none' : 'translateX(-50%)',
                   }}
                 >
-                  {show ? axisDate(dim, bucket.date) : ''}
+                  {show ? axisDate('day', bucket.date) : ''}
                 </span>
               )
             })}
@@ -411,27 +353,7 @@ export function UsageSection({ t }: UsageSectionInjected): ReactNode {
 
       {cellsMax === 0 && barMax === 0 ? <div className={styles.note}>{t('empty')}</div> : null}
 
-      {tooltip !== null && (
-        <div className={styles.tooltip} style={{ left: tooltip.x + 14, top: tooltip.y + 14 }}>
-          <div className={styles.tooltipTitle}>{tooltip.title}</div>
-          <div className={styles.tooltipRow}>
-            <span>{t('input')}</span>
-            <b>{fmt(tooltip.bucket.input)}</b>
-          </div>
-          <div className={styles.tooltipRow}>
-            <span>{t('output')}</span>
-            <b>{fmt(tooltip.bucket.output)}</b>
-          </div>
-          <div className={styles.tooltipRow}>
-            <span>{t('cacheRead')}</span>
-            <b>{fmt(tooltip.bucket.cacheRead)}</b>
-          </div>
-          <div className={`${styles.tooltipRow} ${styles.tooltipTotal}`}>
-            <span>{t('total')}</span>
-            <b>{fmt(tooltip.bucket.total)}</b>
-          </div>
-        </div>
-      )}
+      {tooltip !== null && <UsageTooltip tip={tooltip} t={t} />}
     </div>
   )
 }

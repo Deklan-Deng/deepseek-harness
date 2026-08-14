@@ -18,8 +18,14 @@
      chat scroller and the takeover frames pad clearance + 16px per side while
      the input card clears the bare clearance, so the input card stays exactly
      content + 32px at every width. Declared on the root because the
-     transcript and the composer seat are sibling subtrees. */
-  --dsh-chat-content-width: 748px;
+     transcript and the composer seat are sibling subtrees.
+
+     Dcode customization: track the center column instead of a fixed 748px
+     cap. The root is the center-column cell itself, so `100%` is the live
+     column width — the transcript/input/dock cards all follow the window
+     (grow full-width on wide, shrink on narrow) instead of floating as a
+     centered fixed 748px strip with dead gutter space. */
+  --dsh-chat-content-width: 100%;
   --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
   --dsh-composer-side-clearance: 16px;
   --dsh-composer-dock-inset: 8px;
